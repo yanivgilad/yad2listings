@@ -294,13 +294,35 @@ def create_dashboard(df, port=8050):
     def update_submodel_options(selected_models):
         if not selected_models or len(selected_models) == 0:
             # If no models selected, show all submodels
-            submodel_options = [{'label': ' '+sm, 'value': sm} for sm in sorted(df['subModel'].unique())]
+            # For each submodel, add the model name in brackets
+            submodel_options = []
+            for sm in sorted(df['subModel'].unique()):
+                # Find models for this submodel
+                models_for_submodel = df[df['subModel'] == sm]['model'].unique()
+                if len(models_for_submodel) == 1:
+                    # If there's only one model for this submodel
+                    label = f"[{models_for_submodel[0]}] {sm}"
+                else:
+                    # If there are multiple models, show first one with "+"
+                    label = f"[{models_for_submodel[0]}+] {sm}"
+                submodel_options.append({'label': label, 'value': sm})
         else:
             # Filter submodels based on selected models
-            filtered_submodels = df[df['model'].isin(selected_models)]['subModel'].unique()
-            submodel_options = [{'label': ' '+sm, 'value': sm} for sm in sorted(filtered_submodels)]
+            filtered_df = df[df['model'].isin(selected_models)]
+            submodel_options = []
+            for sm in sorted(filtered_df['subModel'].unique()):
+                # Find models for this submodel (limited to selected models)
+                models_for_submodel = filtered_df[filtered_df['subModel'] == sm]['model'].unique()
+                if len(models_for_submodel) == 1:
+                    # If there's only one model for this submodel
+                    label = f" {sm} [{models_for_submodel[0]}]"
+                else:
+                    # Join all models (should be less since we're filtering)
+                    models_str = '+'.join(models_for_submodel)
+                    label = f" {sm} [{models_str}]"
+                submodel_options.append({'label': label, 'value': sm})
         
-        return submodel_options
+        return list(sorted(submodel_options, key=lambda x: x['label']))
     
     # Callback to clear submodel selection
     @app.callback(
@@ -403,25 +425,26 @@ def create_dashboard(df, port=8050):
         fig.update_layout(
             clickmode='event+select',
             # Add a modal div for showing ad links that can be clicked even when not hovering
-            hoverdistance=300,  # Increase hover distance
+            hoverdistance=100,  # Increase hover distance
             hovermode='closest'  # Ensure hover identifies the closest point
         )
         
-        # Create a hidden div to store the selected vehicle link
-        if 'link-store' not in app.layout.children:
+        # Initialize the hidden store for ad links if it doesn't exist
+        if 'link-store' not in [component.id for component in app.layout.children if hasattr(component, 'id')]:
             app.layout.children.append(html.Div(id='link-store', style={'display': 'none'}))
         
-        # Add JavaScript callback to store the selected link
+        # Add JavaScript callback to handle clicks and open links
         app.clientside_callback(
             """
             function(clickData) {
                 if(clickData && clickData.points && clickData.points.length > 0) {
                     const link = clickData.points[0].customdata[6];
                     if(link) {
+                        // Open the link in a new tab
                         window.open(link, '_blank');
                     }
                 }
-                return window.dash_clientside.no_update;
+                return clickData ? clickData.points[0].customdata[6] : "";
             }
             """,
             Output('link-store', 'children'),
