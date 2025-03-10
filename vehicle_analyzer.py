@@ -11,10 +11,11 @@ import yad2_parser
 
 # For web visualization
 import dash
-from dash import dcc, html, Input, Output, State
+from dash import dcc, html, Input, Output, State, callback_context
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+from dash.exceptions import PreventUpdate
 
 def parse_arguments():
     """Parse command line arguments"""
@@ -194,6 +195,16 @@ def create_dashboard(df, port=8050):
             'font-weight': 'bold',
             'margin-top': '10px',
             'width': '100%'
+        },
+        'click_instruction': {
+            'text-align': 'center',
+            'font-style': 'italic',
+            'color': '#3498db',
+            'margin': '10px 0',
+            'padding': '8px',
+            'background-color': '#f0f7ff',
+            'border-radius': '5px',
+            'border-left': '3px solid #3498db'
         }
     }
     
@@ -239,6 +250,16 @@ def create_dashboard(df, port=8050):
             ], style=styles['filter']),
             
             html.Div([
+                html.Label("Filter by listing type:", style=styles['label']),
+                dcc.Dropdown(
+                    id='adtype-filter',
+                    options=ad_types,
+                    value='all',
+                    clearable=False
+                ),
+            ], style=styles['filter']),
+
+            html.Div([
                 html.Label("Filter by sub-model:", style=styles['label']),
                 html.Div([
                     dcc.Checklist(
@@ -263,16 +284,12 @@ def create_dashboard(df, port=8050):
                 ], style={'display': 'flex', 'gap': '10px'}),
             ], style={'width': '23%', 'min-width': '200px', 'padding': '10px', 'flex-grow': '1'}),
             
-            html.Div([
-                html.Label("Filter by listing type:", style=styles['label']),
-                dcc.Dropdown(
-                    id='adtype-filter',
-                    options=ad_types,
-                    value='all',
-                    clearable=False
-                ),
-            ], style=styles['filter']),
         ], style=styles['filter_container']),
+        
+        # Click instruction
+        html.Div([
+            html.P("👆 Click on any point in the graph to open the vehicle ad in a new tab")
+        ], style=styles['click_instruction']),
         
         # Graph section
         html.Div([
@@ -284,7 +301,29 @@ def create_dashboard(df, port=8050):
             html.H3("Data Summary", style=styles['summary_header']),
             html.Div(id='summary-stats')
         ], style=styles['summary']),
+        
+        # Store for clicked links - ADDED FOR CLICKABLE POINTS
+        dcc.Store(id='clicked-link', storage_type='memory'),
     ], style=styles['container'])
+    
+    # ADDED: Client-side callback to open links in new tab
+    app.clientside_callback(
+        """
+        function(clickData) {
+            console.log(clickData);
+            if(clickData && clickData.points && clickData.points.length > 0) {
+                const link = clickData.points[0].customdata[6];
+                if(link && link.length > 0) {
+                    window.open(link, '_blank');
+                }
+            }
+            return window.dash_clientside.no_update;
+        }
+        """,
+        Output('clicked-link', 'data'),
+        Input('price-date-scatter', 'clickData'),
+        prevent_initial_call=True
+    )
     
     # Callback to update submodel options based on selected models
     @app.callback(
@@ -387,7 +426,7 @@ def create_dashboard(df, port=8050):
             y='price',
             color='km_per_year',
             # Use fixed size instead of varying by km_per_year
-            size_max=7,  # Control the maximum marker size
+            size_max=8,  # Slightly larger for better clickability
             color_continuous_scale='viridis',  # Smooth color gradient
             range_color=[0, filtered_df['km_per_year'].quantile(0.95)],  # Cap color scale for better differentiation
             hover_data=['model', 'subModel', 'hand', 'km', 'city', 'productionDate', 'link'],
@@ -408,9 +447,13 @@ def create_dashboard(df, port=8050):
             filtered_df['link']
         ))
         
-        # Make points clickable to their ad links
+        # UPDATED: Make points clickable to their ad links with improved styling
         fig.update_traces(
-            marker=dict(size=6),
+            marker=dict(
+                size=8,  # Larger points for easier clicking
+                opacity=0.8,
+                line=dict(width=1, color='DarkSlateGrey')  # Add outline for better visibility
+            ),
             customdata=custom_data,
             hovertemplate='<b>%{customdata[0]} %{customdata[1]}</b><br>' +
                           'Price: ₪%{y:,.0f}<br>' +
@@ -418,44 +461,18 @@ def create_dashboard(df, port=8050):
                           'Hand: %{customdata[2]}<br>' +
                           'KM: %{customdata[3]:,.0f}<br>' +
                           'City: %{customdata[4]}<br>' +
-                          '<a href="%{customdata[6]}" target="_blank" style="color:#3498db;font-weight:bold">View Ad</a>',
+                          '<b>👆 Click to view ad</b>'  # Clear instruction in hover
         )
         
-        # Configure clickable points using Plotly's click events
+        # UPDATED: Configure clickable points with improved settings
         fig.update_layout(
-            clickmode='event+select',
-            # Add a modal div for showing ad links that can be clicked even when not hovering
-            hoverdistance=100,  # Increase hover distance
-            hovermode='closest'  # Ensure hover identifies the closest point
-        )
-        
-        # Initialize the hidden store for ad links if it doesn't exist
-        if 'link-store' not in [component.id for component in app.layout.children if hasattr(component, 'id')]:
-            app.layout.children.append(html.Div(id='link-store', style={'display': 'none'}))
-        
-        # Add JavaScript callback to handle clicks and open links
-        app.clientside_callback(
-            """
-            function(clickData) {
-                if(clickData && clickData.points && clickData.points.length > 0) {
-                    const link = clickData.points[0].customdata[6];
-                    if(link) {
-                        // Open the link in a new tab
-                        window.open(link, '_blank');
-                    }
-                }
-                return clickData ? clickData.points[0].customdata[6] : "";
-            }
-            """,
-            Output('link-store', 'children'),
-            Input('price-date-scatter', 'clickData'),
-            prevent_initial_call=True
-        )
-        
-        # Improve figure layout
-        fig.update_layout(
-            template="plotly_white",
-            plot_bgcolor='rgba(0,0,0,0)',
+            clickmode='event+select',  # Enable clicking on points
+            hoverdistance=100,         # Increase hover detection distance
+            hovermode='closest',       # Show hover info for closest point
+            # Improve interactivity
+            dragmode='zoom',
+            # Enhance appearance
+            plot_bgcolor='rgba(240,240,240,0.2)',
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(family="Roboto, sans-serif"),
             xaxis=dict(
