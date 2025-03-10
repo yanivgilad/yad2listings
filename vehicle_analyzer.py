@@ -723,7 +723,7 @@ def create_dashboard(df, port=8050):
     
     # Run the app
     print(f"Starting dashboard on http://127.0.0.1:{port}/")
-    app.run_server(debug=True, port=port)
+    app.run_server(debug=False, port=port)
 
 def main():
     args = parse_arguments()
@@ -741,9 +741,11 @@ def main():
     
     # Step 3: Load the data
     df = load_data(csv_path)
+    os.unlink(csv_path)
     
     # Step 4: Create and run the dashboard
     create_dashboard(df, args.port)
+
 
 if __name__ == "__main__":
     main()
