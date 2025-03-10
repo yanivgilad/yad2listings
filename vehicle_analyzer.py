@@ -108,6 +108,9 @@ def create_dashboard(df, port=8050):
         {'label': sm, 'value': sm} for sm in sorted(df['subModel'].unique())
     ]
     
+    # Create model filter options
+    models = [{'label': m, 'value': m} for m in sorted(df['model'].unique())]
+    
     ad_types = [{'label': 'All', 'value': 'all'}] + [
         {'label': at, 'value': at} for at in sorted(df['listingType'].unique())
     ]
@@ -180,6 +183,17 @@ def create_dashboard(df, port=8050):
             'font-weight': 'bold',
             'margin-top': '10px',
             'width': '100%'
+        },
+        'clear_button': {
+            'background-color': '#e74c3c',
+            'color': 'white',
+            'border': 'none',
+            'padding': '10px 20px',
+            'border-radius': '5px',
+            'cursor': 'pointer',
+            'font-weight': 'bold',
+            'margin-top': '10px',
+            'width': '100%'
         }
     }
     
@@ -212,22 +226,41 @@ def create_dashboard(df, port=8050):
                 ),
             ], style=styles['filter']),
             
+            # New model multi-select dropdown
+            html.Div([
+                html.Label("Filter by model:", style=styles['label']),
+                dcc.Dropdown(
+                    id='model-filter',
+                    options=models,
+                    value=[],
+                    multi=True,
+                    placeholder="Select model(s)"
+                ),
+            ], style=styles['filter']),
+            
             html.Div([
                 html.Label("Filter by sub-model:", style=styles['label']),
                 html.Div([
                     dcc.Checklist(
                         id='submodel-checklist',
-                        options=[{'label': ' '+sm, 'value': sm} for sm in sorted(df['subModel'].unique())],
+                        options=[],  # Will be populated dynamically based on model selection
                         value=[],
                         labelStyle={'display': 'block', 'margin-bottom': '8px', 'cursor': 'pointer'},
                         style={'max-height': '200px', 'overflow-y': 'auto', 'padding': '10px', 'background-color': '#f5f9ff', 'border-radius': '5px'}
                     ),
                 ]),
-                html.Button(
-                    'Apply Filters', 
-                    id='apply-submodel-button', 
-                    style=styles['button']
-                ),
+                html.Div([
+                    html.Button(
+                        'Apply Filters', 
+                        id='apply-submodel-button', 
+                        style=styles['button']
+                    ),
+                    html.Button(
+                        'Clear Selection', 
+                        id='clear-submodel-button', 
+                        style=styles['clear_button']
+                    ),
+                ], style={'display': 'flex', 'gap': '10px'}),
             ], style={'width': '23%', 'min-width': '200px', 'padding': '10px', 'flex-grow': '1'}),
             
             html.Div([
@@ -253,16 +286,42 @@ def create_dashboard(df, port=8050):
         ], style=styles['summary']),
     ], style=styles['container'])
     
+    # Callback to update submodel options based on selected models
+    @app.callback(
+        Output('submodel-checklist', 'options'),
+        Input('model-filter', 'value'),
+    )
+    def update_submodel_options(selected_models):
+        if not selected_models or len(selected_models) == 0:
+            # If no models selected, show all submodels
+            submodel_options = [{'label': ' '+sm, 'value': sm} for sm in sorted(df['subModel'].unique())]
+        else:
+            # Filter submodels based on selected models
+            filtered_submodels = df[df['model'].isin(selected_models)]['subModel'].unique()
+            submodel_options = [{'label': ' '+sm, 'value': sm} for sm in sorted(filtered_submodels)]
+        
+        return submodel_options
+    
+    # Callback to clear submodel selection
+    @app.callback(
+        Output('submodel-checklist', 'value'),
+        Input('clear-submodel-button', 'n_clicks'),
+        prevent_initial_call=True
+    )
+    def clear_submodel_selection(n_clicks):
+        return []
+    
     @app.callback(
         [Output('price-date-scatter', 'figure'),
          Output('summary-stats', 'children')],
         [Input('km-filter', 'value'),
          Input('hand-filter', 'value'),
+         Input('model-filter', 'value'),
          Input('apply-submodel-button', 'n_clicks'),
          Input('adtype-filter', 'value')],
         [State('submodel-checklist', 'value')]
     )
-    def update_graph(km_range, hand, submodel_btn_clicks, adtype, submodel_list):
+    def update_graph(km_range, hand, models, submodel_btn_clicks, adtype, submodel_list):
         # Apply filters
         filtered_df = df.copy()
         
@@ -276,6 +335,10 @@ def create_dashboard(df, port=8050):
             # Parse the hand range format (e.g., "0-2" means hand ≤ 2)
             min_hand, max_hand = map(int, hand.split('-'))
             filtered_df = filtered_df[filtered_df['hand'] <= max_hand]
+        
+        # Handle model multiselect filter
+        if models and len(models) > 0:
+            filtered_df = filtered_df[filtered_df['model'].isin(models)]
             
         # Handle checkbox list for submodels
         if submodel_list and len(submodel_list) > 0:
@@ -333,15 +396,22 @@ def create_dashboard(df, port=8050):
                           'Hand: %{customdata[2]}<br>' +
                           'KM: %{customdata[3]:,.0f}<br>' +
                           'City: %{customdata[4]}<br>' +
-                          '<a href="%{customdata[6]}" target="_blank" style="color:#3498db;font-weight:bold">Click to view ad</a>',
+                          '<a href="%{customdata[6]}" target="_blank" style="color:#3498db;font-weight:bold">View Ad</a>',
         )
         
         # Configure clickable points using Plotly's click events
         fig.update_layout(
             clickmode='event+select',
+            # Add a modal div for showing ad links that can be clicked even when not hovering
+            hoverdistance=300,  # Increase hover distance
+            hovermode='closest'  # Ensure hover identifies the closest point
         )
         
-        # Add JavaScript callback to make dots open links on click
+        # Create a hidden div to store the selected vehicle link
+        if 'link-store' not in app.layout.children:
+            app.layout.children.append(html.Div(id='link-store', style={'display': 'none'}))
+        
+        # Add JavaScript callback to store the selected link
         app.clientside_callback(
             """
             function(clickData) {
@@ -354,7 +424,7 @@ def create_dashboard(df, port=8050):
                 return window.dash_clientside.no_update;
             }
             """,
-            Output('price-date-scatter', 'figure', allow_duplicate=True),
+            Output('link-store', 'children'),
             Input('price-date-scatter', 'clickData'),
             prevent_initial_call=True
         )
