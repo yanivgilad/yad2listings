@@ -26,7 +26,7 @@ def parse_arguments():
                         help='Manufacturer ID to scrape')
     parser.add_argument('--model', type=int, default=12894,
                         help='Model ID to scrape')
-    parser.add_argument('--max-pages', type=int, default=20,
+    parser.add_argument('--max-pages', type=int, default=25,
                         help='Maximum number of pages to scrape')
     parser.add_argument('--skip-scrape', action='store_true',
                         help='Skip scraping and use existing data')

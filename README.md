@@ -28,6 +28,9 @@ python vehicle_analyzer.py --manufacturer 41 --model 11579
 
 # Hyundai Ioniq 5
 python vehicle_analyzer.py --manufacturer 21 --model 11239
+
+# Nissan Qashqai
+python vehicle_analyzer.py --manufacturer 32 --model 10449
 ```
 
 Use existing data:
