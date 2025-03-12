@@ -1,6 +1,11 @@
 # Yad2 Vehicle Price Analyzer
 
+<a href="https://buymeacoffee.com/tamirmayer" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
+
+<br>
 Tool for scraping and visualizing vehicle pricing data from Yad2.
+<br>
+<br>
 
 <img width="1000" alt="image" src="https://github.com/user-attachments/assets/e8adc837-79b5-4c04-8148-4bf081ff1677" />
 
