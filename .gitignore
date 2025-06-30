@@ -1,2 +1,29 @@
 scraped_vehicles/*
+
+# Virtual environment
+venv/
+.venv/
+env/
+.env/
+
+# Byte-code files
 *.pyc
+__pycache__/
+
+# IDE specific files
+.vscode/
+.idea/
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Data files (often generated)
+*.csv
+*.json
+scraped_vehicles/
+
+# Specific to Python projects
+*.egg-info/
+dist/
+build/
